@@ -1,6 +1,6 @@
 import path from 'path';
 import { VitePWA } from 'vite-plugin-pwa';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { transformSync } from 'esbuild';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -93,12 +93,18 @@ function stripReleaseConsolePlugin(): Plugin {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const apiUrl = env.VITE_GOSSIP_API_URL ?? '';
+  // HTTPS pages cannot call a plain-HTTP gossip-node (mixed content).
+  const plainHttpApi = apiUrl.startsWith('http://');
+
+  return {
   plugins: [
     stripReleaseConsolePlugin(),
     react(),
     tailwindcss(),
-    mkcert(), // ← Enables HTTPS locally
+    ...(plainHttpApi ? [] : [mkcert()]),
     crossOriginIsolation(), // ← Sets COOP/COEP for SharedArrayBuffer (rayon WASM)
     nodePolyfills({
       // Whether to polyfill `node:` protocol imports.
@@ -236,4 +242,5 @@ export default defineConfig({
   worker: {
     format: 'es',
   },
+};
 });
