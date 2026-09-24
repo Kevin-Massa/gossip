@@ -93,18 +93,12 @@ function stripReleaseConsolePlugin(): Plugin {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
-  const apiUrl = env.VITE_GOSSIP_API_URL ?? '';
-  // HTTPS pages cannot call a plain-HTTP gossip-node (mixed content).
-  const plainHttpApi = apiUrl.startsWith('http://');
-
-  return {
+const config = defineConfig({
   plugins: [
     stripReleaseConsolePlugin(),
     react(),
     tailwindcss(),
-    ...(plainHttpApi ? [] : [mkcert()]),
+    mkcert(), // HTTPS is required for LAN camera, crypto and service worker access.
     crossOriginIsolation(), // ← Sets COOP/COEP for SharedArrayBuffer (rayon WASM)
     nodePolyfills({
       // Whether to polyfill `node:` protocol imports.
@@ -242,5 +236,32 @@ export default defineConfig(({ mode }) => {
   worker: {
     format: 'es',
   },
-};
+});
+
+export default defineConfig(({ command, mode, isPreview }) => {
+  // Native live reload uses DEV_SERVER_URL and retains its existing configuration.
+  if (command !== 'serve' || isPreview || process.env.DEV_SERVER_URL)
+    return config;
+
+  const { VITE_GOSSIP_API_URL: apiUrl } = loadEnv(mode, process.cwd(), 'VITE_');
+  if (!apiUrl?.startsWith('http://')) return config;
+
+  // Keep the browser in a secure context and proxy HTTP APIs only during web dev.
+  const apiProxyPath = '/__gossip_api';
+  return {
+    ...config,
+    define: {
+      'import.meta.env.VITE_GOSSIP_API_URL': JSON.stringify(apiProxyPath),
+    },
+    server: {
+      ...config.server,
+      proxy: {
+        [apiProxyPath + '/']: {
+          target: apiUrl.replace(/\/+$/, ''),
+          changeOrigin: true,
+          rewrite: requestPath => requestPath.slice(apiProxyPath.length),
+        },
+      },
+    },
+  };
 });
