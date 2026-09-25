@@ -98,7 +98,7 @@ const config = defineConfig({
     stripReleaseConsolePlugin(),
     react(),
     tailwindcss(),
-    mkcert(), // HTTPS is required for LAN camera, crypto and service worker access.
+    mkcert(), // Enables HTTPS locally: HTTPS is required for LAN camera, crypto and service worker access.
     crossOriginIsolation(), // ← Sets COOP/COEP for SharedArrayBuffer (rayon WASM)
     nodePolyfills({
       // Whether to polyfill `node:` protocol imports.
