@@ -1,4 +1,7 @@
+import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer as createHttpServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createServer, type ConfigEnv } from 'vite';
 import viteConfig from '../../vite.config';
@@ -59,7 +62,9 @@ it('forwards API paths, query strings and POST bodies to the HTTP backend', asyn
   });
   await new Promise<void>(resolve => backend.listen(0, '127.0.0.1', resolve));
   let server: Awaited<ReturnType<typeof createServer>> | undefined;
+  let root: string | undefined;
   try {
+    root = await mkdtemp(join(tmpdir(), 'vite-proxy-test-'));
     const address = backend.address();
     if (!address || typeof address === 'string')
       throw new Error('Missing backend port');
@@ -73,6 +78,9 @@ it('forwards API paths, query strings and POST bodies to the HTTP backend', asyn
     // Exercise Vite's actual proxy without installing certificates in the test runner.
     server = await createServer({
       configFile: false,
+      root,
+      appType: 'custom',
+      optimizeDeps: { noDiscovery: true, include: [] },
       server: { host: '127.0.0.1', port: 0, proxy: config.server?.proxy },
     });
     await server.listen();
@@ -92,9 +100,13 @@ it('forwards API paths, query strings and POST bodies to the HTTP backend', asyn
       body: '{"test":true}',
     });
   } finally {
-    await server?.close();
-    await new Promise<void>((resolve, reject) =>
-      backend.close(error => (error ? reject(error) : resolve()))
-    );
+    try {
+      await server?.close();
+      await new Promise<void>((resolve, reject) =>
+        backend.close(error => (error ? reject(error) : resolve()))
+      );
+    } finally {
+      if (root) await rm(root, { recursive: true, force: true });
+    }
   }
 });
